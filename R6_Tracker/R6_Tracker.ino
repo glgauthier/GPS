@@ -27,12 +27,11 @@ SoftwareSerial nss(3,2); // Set up a software serial connection to the GPS modul
 static void gpsdump(TinyGPS &gps);
 static bool feedgps();
 static void changemode();
-static void changegoal();
 void printLCDFloat(double number, int digits);
 void timekeep();
 
 // Set the desired goal to 3 miles (this can be changed using the goal button)
-float GOAL = 3; // Distances can include decimal points
+//float GOAL = 3; // Distances can include decimal points
 
 // Global variables for maximum speed and last known position (not all are used)
 float maxSpeed = 0;
@@ -54,13 +53,15 @@ int run = 0; // Variable used to switch between stop/start modes
 
 // Setup loop: Runs once at boot
 void setup() {
-  nss.begin(9600); // Start a software serial connection with the GPS module
+  nss.begin(9600); // Start a software serial connection with the GPS module, WAS 9600
   LCD.begin(16, 2); // Initialize the interface to the 16x2 lcd screen...
   LCD.clear(); //... and clear whatever's on the screen
   
+ // Serial.begin(9600);
+  
   // Set up digital pins 8 and 9 for button inputs (Start/Stop and Goal)
   pinMode(8, INPUT);
-  pinMode(9, INPUT);
+  //pinMode(9, INPUT);
   
   // Print to the LCD that the GPS module is acquiring satellites
   LCD.setCursor(0,1);
@@ -73,9 +74,8 @@ void loop() {
  //-------------------------------------When time is stopped---------------------------------
   while(run == 0){ // Do the following things while the run vairable is set to FALSE
 
-    // If the Start/Stop or Goal buttons are pressed call the changemode() or changegoal() fxns
+    // If the Start/Stop button is pressed call the changemode() function
     if(digitalRead(8) == HIGH) changemode(); // changemode toggles the 'run' variable
-    if(digitalRead(9) == HIGH) changegoal(); // changegoal increments the 'goal' variable
     
     // If there is new data available from the GPS module ...
     if(feedgps()) {
@@ -114,7 +114,7 @@ void loop() {
     */
     
     if(digitalRead(8)== HIGH)  changemode(); // Check on the start/stop button
-    if(digitalRead(9)== HIGH)  changegoal(); // Check on the goal button
+   
     
     bool newdata = false; // Indicate that any new data has been processesd
     unsigned long start = millis(); // Create a timing variable 
@@ -122,7 +122,6 @@ void loop() {
     // This while loop is the inner loop, and excecutes in the time between each second
     while (millis() - start < 1000) { // while the time is between 0 and 1 seconds
       if(digitalRead(8)== HIGH) changemode(); // Check on the start/stop button
-      if(digitalRead(9)== HIGH) changegoal(); // Check on the goal button
       if (feedgps()) newdata = true; // if there is new data available, set boolean newdata to TRUE
     }
     
@@ -130,18 +129,17 @@ void loop() {
     timekeep(); // ... and update the global time in H:MM:SS
     gpsdump(gps); // Then send the current gps data to the gpsdump() loop
     
-    // On the second line of the display, print out the current time and goal
+    // On the second line of the display, print out the current time
     LCD.setCursor(0,1);
-    LCD.print(hours);
-    LCD.print(":");
-    LCD.print(tminutes);
-    LCD.print(minutes);
-    LCD.print(":");
-    LCD.print(tseconds);
-    LCD.print(seconds);
-    LCD.print(" "); 
-    LCD.print(GOAL); 
-    LCD.print(" Mi");
+    String timestring;
+    timestring = String(hours)+":"+String(tminutes)+String(minutes)+":"+String(tseconds)+String(seconds)+"  ";
+    LCD.print(timestring);
+   
+    //and the number of sats
+    LCD.print(gps.satellites() == TinyGPS::GPS_INVALID_SATELLITES ? 0 : gps.satellites());
+    LCD.print(" ");
+    LCD.print("Sats   ");
+  
   }
 }
 
@@ -179,11 +177,16 @@ static void gpsdump(TinyGPS &gps) {
   //convert meters to miles
   fDist *= 0.000621371192; // Convert that stored number from meters to miles
   printLCDFloat(fDist, 2); // And then print it to the LCD, 
-  LCD.print(" Miles ("); // Indicating that it's in miles
+  LCD.print(" Miles "); // Indicating that it's in miles
   
-  float targetDist = fDist / GOAL; // Then, create a decimal number for the percent of the goal reached
-  printLCDFloat(targetDist*100, 0); // Turn the decimal into a percent and print it to the LCD
-  LCD.print("%)"); // Indicating that it's a percent value
+  float speed =  gps.speed()/100; // Then, create a decimal number for the percent of the goal reached
+  printLCDFloat(speed, 1); // Turn the decimal into a percent and print it to the LCD
+  LCD.print("Kn");
+  
+  //Debug to make sure I'm not getting any overflow
+  //Serial.println(nss.overflow() ? "YES!" : "No");
+ 
+   
 }
 
 /* printLCDFloat function: consumes a decimal number (number) and the number of decimal places
@@ -304,28 +307,6 @@ static void changemode() {
  last_interrupt_time = interrupt_time; 
 }
 
-/* changegoal: consumes and returns nothing; increments the value of GOAL, printing the updated
-* variable to the LCD 
-*/
-static void changegoal() {
- static unsigned long last_interrupt_time = 0; // Used to debounce button press
- unsigned long interrupt_time = millis(); // Used to debounce button press
-
- if (interrupt_time - last_interrupt_time > 200) { // If the button has been pressed..
-       if (GOAL >= 10) GOAL = 0.5; // If GOAL is already at 10 miles, bring it back down ...
-       else GOAL += 0.5; // ... Otherwise, increment it by 0.5 miles
-       // Print the updated goal to the LCD screen
-       LCD.setCursor(0,0);
-       LCD.clear();
-       LCD.print("Goal: ");
-       LCD.print(GOAL);
-       // And wait a little bit so that the new goal stays on the screen long enough to read
-       delay(333);
- }
- 
- LCD.clear(); // Then, clear the LCD
- last_interrupt_time = interrupt_time;
-}
 
 /* timekeep: consumes and returns nothing; this function is used to convert the current
 * time from seconds to H:MM:SS with a different variable for each digit. Note that I'm doing this
